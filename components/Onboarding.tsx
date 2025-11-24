@@ -1,12 +1,17 @@
 import React from 'react';
 import { Cpu, Sparkles, Terminal } from 'lucide-react';
+import { Language } from '../types';
+import { getText } from '../utils/translations';
 
 interface OnboardingProps {
   onGenerate: () => void;
   isLoading: boolean;
+  language: Language;
 }
 
-export const Onboarding: React.FC<OnboardingProps> = ({ onGenerate, isLoading }) => {
+export const Onboarding: React.FC<OnboardingProps> = ({ onGenerate, isLoading, language }) => {
+  const t = getText(language).onboarding;
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 text-center max-w-2xl mx-auto">
       <div className="bg-ai-accent/10 p-4 rounded-full mb-6 animate-pulse-slow">
@@ -14,15 +19,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onGenerate, isLoading })
       </div>
       
       <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
-        Gemini <span className="text-ai-accent">Mastery</span> Plan
+        {t.title.split('Mastery')[0]} <span className="text-ai-accent">Mastery</span> {t.title.split('Plan')[1]}
       </h1>
       
       <p className="text-slate-400 text-lg mb-8 leading-relaxed">
-        Prepare for your LLM & GenAI journey. We will generate a rigorous, 
-        code-focused curriculum tailored to your ML background. 
+        {t.subtitle}
         <br/><br/>
         <span className="text-sm font-mono bg-slate-800 px-2 py-1 rounded text-yellow-400">
-          Penalty Mode Active: Miss a day? +1 Hour added to tomorrow.
+          {t.penaltyMode}
         </span>
       </p>
 
@@ -34,10 +38,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onGenerate, isLoading })
         </div>
         <p className="mb-1"><span className="text-green-400">$</span> user.background = "ML_Strong";</p>
         <p className="mb-1"><span className="text-green-400">$</span> user.goal = "LLM_Engineer";</p>
-        <p className="mb-1"><span className="text-green-400">$</span> gemini.generate_plan({'{'} mode: "Hardcore" {'}'});</p>
+        <p className="mb-1"><span className="text-green-400">$</span> gemini.generate_plan({'{'} lang: "{language}" {'}'});</p>
         {isLoading && (
           <p className="mt-2 text-ai-accent animate-pulse">
-            > Generating optimal learning path... (Thinking Budget: 2048 tokens)
+            > {t.generating}
           </p>
         )}
       </div>
@@ -49,11 +53,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onGenerate, isLoading })
       >
         {isLoading ? (
            <span className="flex items-center gap-2">
-             <Sparkles className="animate-spin" size={20} /> Creating Plan...
+             <Sparkles className="animate-spin" size={20} /> {t.buttonLoading}
            </span>
         ) : (
            <span className="flex items-center gap-2">
-             <Terminal size={20} /> Initiate Protocol
+             <Terminal size={20} /> {t.buttonGen}
            </span>
         )}
       </button>

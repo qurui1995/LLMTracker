@@ -1,33 +1,44 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Brain, Activity, AlertTriangle, Clock, BookOpen } from 'lucide-react';
+import { Brain, Activity, AlertTriangle, Clock, BookOpen, Globe } from 'lucide-react';
 import { generateStudyPlan } from './services/geminiService';
-import { DayPlan, StudyStatus } from './types';
+import { DayPlan, StudyStatus, KnowledgePoint, Language } from './types';
 import { Onboarding } from './components/Onboarding';
 import { DayCard } from './components/DayCard';
 import { StatsCard } from './components/StatsCard';
+import { getText } from './utils/translations';
 
 const STORAGE_KEY = 'genai_study_plan_v1';
+const LANG_STORAGE_KEY = 'genai_study_lang';
 
 const App: React.FC = () => {
   const [plan, setPlan] = useState<DayPlan[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [currentDayIndex, setCurrentDayIndex] = useState<number>(0); // 0-based index of current active day
+  const [currentDayIndex, setCurrentDayIndex] = useState<number>(0);
+  const [language, setLanguage] = useState<Language>('en');
 
   // Load from local storage on mount
   useEffect(() => {
+    // Load Plan
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
-        setPlan(JSON.parse(saved));
-        // Find first non-completed day to set as current
         const parsed = JSON.parse(saved);
-        const firstIncomplete = parsed.findIndex((d: DayPlan) => d.status !== StudyStatus.COMPLETED);
-        setCurrentDayIndex(firstIncomplete !== -1 ? firstIncomplete : parsed.length - 1);
+        const migratedPlan = parsed.map((d: any) => ({
+          ...d,
+          knowledgePoints: d.knowledgePoints || []
+        }));
+        setPlan(migratedPlan);
+        const firstIncomplete = migratedPlan.findIndex((d: DayPlan) => d.status !== StudyStatus.COMPLETED);
+        setCurrentDayIndex(firstIncomplete !== -1 ? firstIncomplete : migratedPlan.length - 1);
       } catch (e) {
         console.error("Failed to load plan", e);
       }
     }
+    
+    // Load Language
+    const savedLang = localStorage.getItem(LANG_STORAGE_KEY) as Language;
+    if (savedLang) setLanguage(savedLang);
   }, []);
 
   // Save to local storage on change
@@ -37,10 +48,14 @@ const App: React.FC = () => {
     }
   }, [plan]);
 
+  useEffect(() => {
+    localStorage.setItem(LANG_STORAGE_KEY, language);
+  }, [language]);
+
   const handleGenerate = async () => {
     setIsLoading(true);
     try {
-      const newPlan = await generateStudyPlan();
+      const newPlan = await generateStudyPlan(language);
       setPlan(newPlan);
       setCurrentDayIndex(0);
     } catch (error) {
@@ -58,10 +73,35 @@ const App: React.FC = () => {
     setPlan(prev => prev.map(d => d.day === dayNumber ? { ...d, hoursSpent: hours } : d));
   };
 
+  const toggleKnowledgePoint = (dayNumber: number, pointIndex: number) => {
+    setPlan(prev => prev.map(d => {
+      if (d.day !== dayNumber) return d;
+      
+      const newPoints = [...d.knowledgePoints];
+      newPoints[pointIndex] = {
+        ...newPoints[pointIndex],
+        isLearned: !newPoints[pointIndex].isLearned
+      };
+      
+      return { ...d, knowledgePoints: newPoints };
+    }));
+  };
+
+  const updateExplanation = (dayNumber: number, pointIndex: number, explanation: string) => {
+    setPlan(prev => prev.map(d => {
+        if (d.day !== dayNumber) return d;
+        
+        const newPoints = [...d.knowledgePoints];
+        newPoints[pointIndex] = {
+          ...newPoints[pointIndex],
+          explanation: explanation
+        };
+        
+        return { ...d, knowledgePoints: newPoints };
+      }));
+  }
+
   // Penalty Calculation Logic
-  // If previous day (currentDayIndex - 1) exists AND is NOT completed, penalty is active.
-  // Note: The prompt asks: "If the previous day is not completed, need to study 1 extra hour".
-  // This implies the penalty applies to the *current* day if the *previous* day was missed.
   const penaltyHours = useMemo(() => {
     if (currentDayIndex === 0) return 0;
     const previousDay = plan[currentDayIndex - 1];
@@ -76,7 +116,12 @@ const App: React.FC = () => {
     const totalHours = plan.reduce((acc, curr) => acc + (curr.hoursSpent || 0), 0);
     const totalTarget = plan.reduce((acc, curr) => acc + curr.targetHours, 0);
     const progress = plan.length ? (completed / plan.length) * 100 : 0;
-    return { completed, totalHours, totalTarget, progress };
+    
+    // Count total learned points
+    const totalPoints = plan.reduce((acc, curr) => acc + curr.knowledgePoints.length, 0);
+    const learnedPoints = plan.reduce((acc, curr) => acc + curr.knowledgePoints.filter(k => k.isLearned).length, 0);
+    
+    return { completed, totalHours, totalTarget, progress, learnedPoints, totalPoints };
   }, [plan]);
 
   const chartData = useMemo(() => {
@@ -88,8 +133,27 @@ const App: React.FC = () => {
     }));
   }, [plan]);
 
+  const toggleLanguage = () => {
+    setLanguage(prev => prev === 'en' ? 'zh' : 'en');
+  };
+
+  const t = getText(language);
+
   if (plan.length === 0) {
-    return <Onboarding onGenerate={handleGenerate} isLoading={isLoading} />;
+    return (
+      <div className="relative">
+        <div className="absolute top-4 right-4 z-50">
+          <button 
+            onClick={toggleLanguage}
+            className="flex items-center gap-2 bg-slate-800 text-slate-300 px-3 py-1.5 rounded-full text-sm font-medium hover:bg-slate-700 border border-slate-700"
+          >
+            <Globe size={14} />
+            {language === 'en' ? 'English' : '中文'}
+          </button>
+        </div>
+        <Onboarding onGenerate={handleGenerate} isLoading={isLoading} language={language} />
+      </div>
+    );
   }
 
   return (
@@ -105,17 +169,26 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-4">
              <div className="hidden md:block text-xs text-slate-400">
-                Model: <span className="text-ai-accent">Gemini 3.0 Pro</span>
+                {t.model}: <span className="text-ai-accent">Gemini 3.0 Pro</span>
              </div>
+             
+             <button 
+                onClick={toggleLanguage}
+                className="flex items-center gap-1.5 bg-slate-800 text-slate-300 px-2 py-1 rounded text-xs hover:bg-slate-700 border border-slate-700"
+              >
+                <Globe size={12} />
+                {language === 'en' ? 'EN' : '中'}
+             </button>
+
              <button 
               onClick={() => {
-                if(confirm("Reset plan? This cannot be undone.")) {
+                if(confirm(t.resetConfirm)) {
                     setPlan([]);
                     localStorage.removeItem(STORAGE_KEY);
                 }
               }}
               className="text-xs text-red-400 hover:text-red-300 underline">
-               Reset Progress
+               {t.reset}
              </button>
           </div>
         </div>
@@ -126,31 +199,32 @@ const App: React.FC = () => {
         {/* Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatsCard 
-            title="Completion" 
+            title={t.stats.completion}
             value={`${stats.completed}/${plan.length}`} 
             icon={Activity} 
             trend={`${stats.progress.toFixed(0)}%`}
             color="blue"
           />
           <StatsCard 
-            title="Hours Logged" 
+            title={t.stats.hoursLogged}
             value={stats.totalHours} 
             icon={Clock} 
-            trend={`Target: ${stats.totalTarget}`}
+            trend={`${t.stats.target}: ${stats.totalTarget}`}
             color="green"
           />
           <StatsCard 
-            title="Current Penalty" 
-            value={penaltyHours > 0 ? `+${penaltyHours}h` : "None"} 
-            icon={AlertTriangle} 
-            color={penaltyHours > 0 ? "red" : "green"}
-            trend={penaltyHours > 0 ? "Yesterday incomplete" : "On track"}
+            title={t.stats.pointsMastered}
+            value={`${stats.learnedPoints}/${stats.totalPoints}`} 
+            icon={BookOpen} 
+            trend={stats.totalPoints > 0 ? `${((stats.learnedPoints/stats.totalPoints)*100).toFixed(0)}%` : '0%'}
+            color="yellow"
           />
           <StatsCard 
-            title="Current Topic" 
-            value={plan[currentDayIndex]?.title || "Finish Line"} 
-            icon={BookOpen} 
-            color="yellow"
+            title={t.stats.penalty}
+            value={penaltyHours > 0 ? `+${penaltyHours}h` : t.stats.none}
+            icon={AlertTriangle} 
+            color={penaltyHours > 0 ? "red" : "green"}
+            trend={penaltyHours > 0 ? t.stats.yesterdayIncomplete : t.stats.onTrack}
           />
         </div>
 
@@ -160,7 +234,7 @@ const App: React.FC = () => {
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Activity className="text-ai-accent" size={20} />
-                Your Curriculum
+                {t.curriculum}
               </h2>
             </div>
             
@@ -172,7 +246,10 @@ const App: React.FC = () => {
                   isActive={index === currentDayIndex}
                   onUpdateStatus={updateStatus}
                   onUpdateHours={updateHours}
+                  onToggleKnowledgePoint={toggleKnowledgePoint}
+                  onUpdateExplanation={updateExplanation}
                   penaltyHours={index === currentDayIndex ? penaltyHours : 0}
+                  language={language}
                 />
               ))}
             </div>
@@ -181,7 +258,7 @@ const App: React.FC = () => {
           {/* Sidebar - Visuals */}
           <div className="space-y-8">
             <div className="bg-ai-card border border-slate-700 rounded-xl p-6 sticky top-24">
-              <h3 className="text-lg font-bold mb-6 text-white">Velocity Tracker</h3>
+              <h3 className="text-lg font-bold mb-6 text-white">{t.velocity}</h3>
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData}>
@@ -200,15 +277,15 @@ const App: React.FC = () => {
               </div>
               <div className="mt-4 space-y-2">
                 <div className="flex justify-between text-xs text-slate-400 border-b border-slate-700 pb-2">
-                    <span>Current Day</span>
+                    <span>{t.currentDay}</span>
                     <span className="text-white font-mono">{currentDayIndex + 1}</span>
                 </div>
                 <div className="flex justify-between text-xs text-slate-400 border-b border-slate-700 pb-2">
-                    <span>Daily Target</span>
+                    <span>{t.dailyTarget}</span>
                     <span className="text-white font-mono">4h</span>
                 </div>
                 <div className="flex justify-between text-xs text-slate-400 pt-2">
-                    <span>Next Milestone</span>
+                    <span>{t.nextMilestone}</span>
                     <span className="text-ai-accent font-mono">LLM Architecture</span>
                 </div>
               </div>

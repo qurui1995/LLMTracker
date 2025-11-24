@@ -5,11 +5,20 @@ export enum StudyStatus {
   SKIPPED = 'SKIPPED'
 }
 
+export type Language = 'en' | 'zh';
+
+export interface KnowledgePoint {
+  text: string;
+  isLearned: boolean;
+  explanation?: string; // Cache for the AI explanation
+}
+
 export interface DayPlan {
   day: number;
   title: string;
   description: string;
   topics: string[];
+  knowledgePoints: KnowledgePoint[];
   codingTask: string;
   interviewFocus: string;
   status: StudyStatus;
