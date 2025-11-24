@@ -1,18 +1,22 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Brain, Activity, AlertTriangle, Clock, BookOpen, Globe } from 'lucide-react';
 import { generateStudyPlan } from './services/geminiService';
-import { DayPlan, StudyStatus, KnowledgePoint, Language } from './types';
+import { DayPlan, StudyStatus, Language, ActivityMap } from './types';
 import { Onboarding } from './components/Onboarding';
 import { DayCard } from './components/DayCard';
 import { StatsCard } from './components/StatsCard';
+import { CalendarHeatmap } from './components/CalendarHeatmap';
 import { getText } from './utils/translations';
 
 const STORAGE_KEY = 'genai_study_plan_v1';
 const LANG_STORAGE_KEY = 'genai_study_lang';
+const ACTIVITY_STORAGE_KEY = 'genai_study_activity_v1';
 
 const App: React.FC = () => {
   const [plan, setPlan] = useState<DayPlan[]>([]);
+  const [activityMap, setActivityMap] = useState<ActivityMap>({});
   const [isLoading, setIsLoading] = useState(false);
   const [currentDayIndex, setCurrentDayIndex] = useState<number>(0);
   const [language, setLanguage] = useState<Language>('en');
@@ -35,6 +39,16 @@ const App: React.FC = () => {
         console.error("Failed to load plan", e);
       }
     }
+
+    // Load Activity
+    const savedActivity = localStorage.getItem(ACTIVITY_STORAGE_KEY);
+    if (savedActivity) {
+      try {
+        setActivityMap(JSON.parse(savedActivity));
+      } catch (e) {
+        console.error("Failed to load activity", e);
+      }
+    }
     
     // Load Language
     const savedLang = localStorage.getItem(LANG_STORAGE_KEY) as Language;
@@ -52,12 +66,19 @@ const App: React.FC = () => {
     localStorage.setItem(LANG_STORAGE_KEY, language);
   }, [language]);
 
+  useEffect(() => {
+    if (Object.keys(activityMap).length > 0) {
+      localStorage.setItem(ACTIVITY_STORAGE_KEY, JSON.stringify(activityMap));
+    }
+  }, [activityMap]);
+
   const handleGenerate = async () => {
     setIsLoading(true);
     try {
       const newPlan = await generateStudyPlan(language);
       setPlan(newPlan);
       setCurrentDayIndex(0);
+      setActivityMap({});
     } catch (error) {
       alert("Failed to generate plan. Please check your API Key or try again.");
     } finally {
@@ -69,8 +90,24 @@ const App: React.FC = () => {
     setPlan(prev => prev.map(d => d.day === dayNumber ? { ...d, status } : d));
   };
 
-  const updateHours = (dayNumber: number, hours: number) => {
-    setPlan(prev => prev.map(d => d.day === dayNumber ? { ...d, hoursSpent: hours } : d));
+  const updateHours = (dayNumber: number, newHours: number) => {
+    // 1. Calculate Delta
+    const currentDay = plan.find(d => d.day === dayNumber);
+    if (!currentDay) return;
+    
+    const delta = newHours - (currentDay.hoursSpent || 0);
+
+    // 2. Update Plan State
+    setPlan(prev => prev.map(d => d.day === dayNumber ? { ...d, hoursSpent: newHours } : d));
+
+    // 3. Update Activity Heatmap (Today's date)
+    if (delta !== 0) {
+      const today = new Date().toISOString().split('T')[0];
+      setActivityMap(prev => ({
+        ...prev,
+        [today]: Math.max(0, (prev[today] || 0) + delta)
+      }));
+    }
   };
 
   const toggleKnowledgePoint = (dayNumber: number, pointIndex: number) => {
@@ -184,7 +221,9 @@ const App: React.FC = () => {
               onClick={() => {
                 if(confirm(t.resetConfirm)) {
                     setPlan([]);
+                    setActivityMap({});
                     localStorage.removeItem(STORAGE_KEY);
+                    localStorage.removeItem(ACTIVITY_STORAGE_KEY);
                 }
               }}
               className="text-xs text-red-400 hover:text-red-300 underline">
@@ -207,7 +246,7 @@ const App: React.FC = () => {
           />
           <StatsCard 
             title={t.stats.hoursLogged}
-            value={stats.totalHours} 
+            value={stats.totalHours.toFixed(1)} 
             icon={Clock} 
             trend={`${t.stats.target}: ${stats.totalTarget}`}
             color="green"
@@ -257,6 +296,9 @@ const App: React.FC = () => {
 
           {/* Sidebar - Visuals */}
           <div className="space-y-8">
+            {/* Calendar Heatmap */}
+            <CalendarHeatmap activity={activityMap} language={language} />
+
             <div className="bg-ai-card border border-slate-700 rounded-xl p-6 sticky top-24">
               <h3 className="text-lg font-bold mb-6 text-white">{t.velocity}</h3>
               <div className="h-64 w-full">

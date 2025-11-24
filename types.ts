@@ -1,3 +1,4 @@
+
 export enum StudyStatus {
   PENDING = 'PENDING',
   IN_PROGRESS = 'IN_PROGRESS',
@@ -6,6 +7,8 @@ export enum StudyStatus {
 }
 
 export type Language = 'en' | 'zh';
+
+export type ActivityMap = Record<string, number>; // "YYYY-MM-DD": hours
 
 export interface KnowledgePoint {
   text: string;

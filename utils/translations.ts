@@ -1,3 +1,4 @@
+
 import { Language } from '../types';
 
 export const translations = {
@@ -15,6 +16,12 @@ export const translations = {
       yesterdayIncomplete: "Yesterday incomplete",
       onTrack: "On track",
       none: "None"
+    },
+    calendar: {
+      title: "Study Consistency",
+      less: "Less",
+      more: "More",
+      today: "Today"
     },
     curriculum: "Your Curriculum",
     velocity: "Velocity Tracker",
@@ -55,6 +62,12 @@ export const translations = {
       yesterdayIncomplete: "昨日未完成",
       onTrack: "进度正常",
       none: "无"
+    },
+    calendar: {
+      title: "学习热力图",
+      less: "少",
+      more: "多",
+      today: "今天"
     },
     curriculum: "学习课程",
     velocity: "速度追踪",
